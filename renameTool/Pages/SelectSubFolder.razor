@@ -1,0 +1,354 @@
+﻿@inject IFolderPicker _folderPicker;
+@page "/selectsubfolder"
+
+@using renameTool.Data
+@using renameTool.Services;
+@inject LanguageService _languageService
+@inject IDialogService _dialogService
+
+<h3>SelectSubFolder</h3>
+
+<p>Select a folder in order to check the subs, and extract them with the ".str" or the old ".idx/.sub" convention.</p>
+
+@if(_currentFolder != null) {
+    <h4>Selected Folder</h4>
+    <p>@_currentFolder.FullName</p>
+}
+
+<hr />
+<button class="btn btn-secondary" @onclick="SelectFolder">Select Folder</button>
+<button class="btn btn btn-outline-secondary" @onclick="ClearProcess">Clear</button>
+<button class="btn btn btn-outline-secondary" @onclick="FindSubtitles">Check For Subtitles</button>
+<p></p>
+
+@if (_subTypes.Count > 0)
+{
+    <h3>Found Subtitle Types</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Extension</th>
+                <th>Select</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var subType in _subTypes)
+            {
+                <tr>
+                    <td>@subType.ExtensionName</td>
+                    <td>
+                        <input type="checkbox" @bind-value=subType.Check checked=@subType.Check>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <button class="btn btn-primary" @onclick="ProcessFolder">Process</button>
+    <p></p>
+}
+
+@if(_listSubs.Count > 0) {
+    
+    <h3>Available Languages</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Language</th>
+                <th>Select</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var lang in _listLang) {
+                <tr>
+                    <td>@lang.Lang</td>
+                    <td>
+                        <input type="checkbox" @bind-value=lang.Check checked=@lang.Check>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <button class="btn btn-primary" @onclick="FilterSelection">Filter</button>
+    <p></p>
+
+    <h3>Available Subtitles</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Subtitle</th>
+                <th>Language</th>
+                <th>Select</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach(var sub in _listSubs) {
+                <tr>
+                    <td>@sub.ParentFolder</td>
+                    <td>@sub.Lang</td>
+                    <td>
+                        <input type="checkbox" @bind-value=sub.Check checked=@sub.Check>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <button class="btn btn-primary" @onclick="UpdateSubs">Fix Subs</button>
+    <p></p>
+}
+
+
+@code {
+    private DirectoryInfo _currentFolder = null;
+    private List<Language> _listLang = new List<Language>();
+    private List<Subtitle> _listSubs = new List<Subtitle>();
+    private List<SubtitleType> _subTypes = new List<SubtitleType>();
+
+    private IEnumerable<int> values = new List<int>();
+
+    private Language[] _lang;
+    protected override async Task OnInitializedAsync()
+    {
+        _lang = await _languageService.GetAllLanguages();
+    }
+
+    private void SelectFolder()
+    {
+        var path = _folderPicker.MyPickFolder();
+
+        if (string.IsNullOrEmpty(path)) {
+            if (_currentFolder != null)
+                return;
+
+            ClearProcess();
+            return;
+        }
+
+        _currentFolder = new DirectoryInfo(path);
+    }
+
+    private void ClearProcess()
+    {
+        _currentFolder = null;
+        _listLang.Clear();
+        _listSubs.Clear();
+        _subTypes.Clear();
+    }
+
+    internal void FindSubtitles()
+    {
+        if (_currentFolder == null)
+            return;
+
+        var subTypes = GetSubtitleTypes(_currentFolder);
+
+        if(subTypes.Any())
+        {
+            _subTypes = subTypes;
+            return;
+        }
+
+        _dialogService.DisplayAlert("Alert", "We could not find any subtitle, please double check the selected folder.", "OK");
+    }
+
+    private List<SubtitleType> GetSubtitleTypes(DirectoryInfo folder)
+    {
+        List<SubtitleType> subTypes = new List<SubtitleType>();
+
+        if (folder.GetFiles("*.srt", SearchOption.AllDirectories).Any())
+            subTypes.Add(new SubtitleType()
+                {
+                    ExtensionName = ".srt",
+                    Extensions = new string[] { "*.srt"},
+                    Check = false
+                });
+
+        if (folder.GetFiles("*.idx", SearchOption.AllDirectories).Any())
+            subTypes.Add(new SubtitleType()
+                {
+                    ExtensionName = ".idx/.sub",
+                    Extensions = new string[] { "*.idx", "*.sub" },
+                    Check = false
+                });
+
+        return subTypes;
+    }
+
+    private FileInfo[] GetSubtitleFiles(DirectoryInfo folder, SubtitleType subType)
+    {
+        //files = _currentFolder.GetFiles("*.srt", SearchOption.AllDirectories);
+
+        var files = subType.Extensions.SelectMany(e => _currentFolder.GetFiles(e, SearchOption.AllDirectories)).ToArray();
+
+        return files;
+    }
+
+    private void ProcessFolder()
+    {
+        if (_currentFolder == null)
+        {
+            ClearProcess();
+            _dialogService.DisplayAlert("Alert", "Please double check the selected folder.", "OK");
+            return;
+        }
+
+        if(_subTypes.Count() < 1 && !_subTypes.Any(s => s.Check = true))
+        {
+            ClearProcess();
+            return;
+        }
+
+        var files = GetSubtitleFiles(_currentFolder, _subTypes.First(s => s.Check = true));
+        if (files.Length < 1)
+        {
+            ClearProcess();
+            return;
+        }
+
+        foreach(var file in files)
+        {
+            var tmpIdx = file.Name.IndexOf("_");
+            var tmpId = 1; //Default in case some subtitles dosent have IDs.
+            var tmpLang = _lang.Where(l => l.Lang2Code == "en").First(); //Default in case some subtitles doesn't have "language", some subs come like this.
+
+            if(tmpIdx > 0)
+            {
+                var tmpLng = file.Name.Substring(tmpIdx + 1, file.Name.Length - (3 + 1 + tmpIdx + 1));
+                tmpId = Convert.ToInt32(file.Name.Substring(0, tmpIdx));
+                
+                //We check if the file, has the language extension.
+                tmpLang = GetLanguageFromName(tmpLng);
+            }
+
+            //_dialogService.DisplayAlert("Alert", $"Can't find language '{tmpLng}', if you need it double check the files manually.", "OK");
+            // TODO: Add some kind of logging or console log.
+            if (tmpLang == null)
+                continue;
+
+            // Añadimos idioma si no esta ya.
+            if (!_listLang.Any(ll => ll.Lang == tmpLang.Lang))
+                _listLang.Add(tmpLang);
+
+            // We don't check files with idx && sub as they are always two files.
+            if (!file.Extension.EndsWith("idx")
+                && !file.Extension.EndsWith("sub"))
+            {
+                // Preferimos subtitulos con mas peso.
+                if (_listSubs.Any(s => s.Lang == tmpLang.Lang
+                    && s.Size > file.Length
+                    && s.ParentFolder == file.Directory.Name
+                   ))
+                    continue;
+
+                // Eliminamos si hay un archivo del mismo idioma repetido.
+                if (_listSubs.Any(s => s.Lang == tmpLang.Lang
+                    && s.ParentFolder == file.Directory.Name))
+                {
+                    _listSubs.Remove(_listSubs.First(l => l.Lang == tmpLang.Lang && l.ParentFolder == file.Directory.Name));
+                }
+            }
+
+            var tmpSub = new Subtitle()
+                {
+                    ID = tmpId,
+                    Size = file.Length,
+                    ParentFolder = file.Directory.Name,
+                    Path = file.DirectoryName,
+                    FileName = file.Name,
+                    FullFileName = file.FullName,
+                    Lang = tmpLang.Lang,
+                    Lang2Code = tmpLang.Lang2Code,
+                    Lang3Code = tmpLang.Lang3Code,
+                    Extension = file.Extension
+                };
+
+            _listSubs.Add(tmpSub);
+        }
+
+        _listLang = _listLang.OrderBy(l => l.Lang).ToList();
+
+        // Sort the list to have the preferred languages on first.
+        if (_listLang.Count > 1)
+        {
+            var tmpLngEn = _listLang.FirstOrDefault(l => l.Lang2Code == "en");
+            if (tmpLngEn != null) {
+                _listLang.Remove(tmpLngEn);
+                _listLang.Insert(0, tmpLngEn);
+            }
+
+            var tmpLngEs = _listLang.FirstOrDefault(l => l.Lang2Code == "es");
+            if (tmpLngEs != null) {
+                _listLang.Remove(tmpLngEs);
+                _listLang.Insert(0, tmpLngEs);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Copy and paste the subs in the new path.
+    /// </summary>
+    private void UpdateSubs()
+    {
+        var selSubs = _listSubs.Where(s => s.Check).ToList();
+
+        foreach(var sub in selSubs) {
+
+            var fname = string.Format("{0}\\{1}.{2}{3}",
+                _currentFolder.Parent.FullName,
+                sub.ParentFolder,
+                sub.Lang2Code,
+                sub.Extension);
+
+            // only runs if idx or sub files are loaded.
+            if (sub.Extension.EndsWith("idx")
+                || sub.Extension.EndsWith("sub"))
+            {
+                fname = string.Format("{0}\\{1}.{2}{3}",
+                _currentFolder.Parent.FullName,
+                sub.FileName.Substring(0, sub.FileName.Length - 4),
+                sub.Lang2Code,
+                sub.Extension);
+            }
+
+            File.Copy(sub.FullFileName, fname);
+        }
+
+        ClearProcess();
+
+    }
+
+    private void FilterSelection() {
+        foreach (var sub in _listSubs) {
+            sub.Check = _listLang.FirstOrDefault(l => l.Lang == sub.Lang).Check;
+        }
+    }
+
+    /// <summary>
+    ///  Get the language from the filename.
+    /// </summary>
+    /// <returns></returns>
+    private Language GetLanguageFromName(string lang)
+    {
+        var rslt = _lang.Where(l => l.Lang2Code.ToLower() == "en").First();
+
+        //We check if the file, has the language extension.
+        var tmp = _lang.FirstOrDefault(l => l.Lang.ToLower() == lang.ToLower());
+        if (tmp == null)
+            tmp = _lang.FirstOrDefault(l => l.Lang2Code.ToLower() == lang.ToLower());
+
+        if (tmp == null)
+            tmp = _lang.FirstOrDefault(l => l.Lang3Code.ToLower() == lang.ToLower());
+
+        if (tmp == null)
+        {
+            tmp = _lang.FirstOrDefault(l => lang.Split(',').Any(ls => ls.ToLower() == l.Lang3Code.ToLower()));
+        }
+
+        // We return the "prefix" if nothing else is found.
+        if (tmp != null)
+            rslt = tmp;
+
+        return rslt;
+    }
+}
