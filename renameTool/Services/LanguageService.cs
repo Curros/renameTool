@@ -21,59 +21,82 @@ namespace renameTool.Data
                 Lang3Code = "eng"
             },
             new Language() {
-                Lang = "Chinese"
+                Lang = "Basque",
+                Lang3Code = "baq"
             },
             new Language() {
-                Lang = "Arabic"
+                Lang = "Catalan",
+                Lang3Code = "cat"
             },
             new Language() {
-                Lang = "Danish"
+                Lang = "Chinese",
+                Lang3Code = "chi"
+            },
+            new Language() {
+                Lang = "Arabic",
+                Lang3Code = "ara"
+            },
+            new Language() {
+                Lang = "Danish",
+                Lang3Code = "dan"
             },
             new Language() {
                 Lang = "German",
+                Lang3Code = "ger"
+            },
+            new Language() {
+                Lang = "Dutch",
                 Lang3Code = "dut"
             },
             new Language() {
-                Lang = "Finnish"
+                Lang = "Finnish",
+                Lang3Code = "fin"
             },
             new Language() {
-                Lang = "French"
+                Lang = "French",
+                Lang3Code = "fre"
             },
             new Language() {
-                Lang = "Hebrew"
+                Lang = "Hebrew",
+                Lang3Code = "heb"
             },
             new Language() {
-                Lang = "Indonesian"
+                Lang = "Indonesian",
+                Lang3Code = "ind"
             },
             new Language() {
-                Lang = "Italian"
+                Lang = "Italian",
+                Lang3Code = "ita"
             },
             new Language() {
-                Lang = "Korean"
+                Lang = "Korean",
+                Lang3Code = "kor"
             },
             new Language() {
                 Lang = "Bokmal"
             },
             new Language() {
-                Lang = "Dutch"
+                Lang = "Polish",
+                Lang3Code = "pol"
             },
             new Language() {
-                Lang = "Polish"
+                Lang = "Portuguese",
+                Lang3Code = "por"
             },
             new Language() {
-                Lang = "Portuguese"
-            },
-            new Language() {
-                Lang = "Russian"
+                Lang = "Russian",
+                Lang3Code = "rus"
             },
             new Language() {
                 Lang = "Swedish"
             },
             new Language() {
-                Lang = "Thai"
+                Lang = "Thai",
+                Lang3Code = "tha"
             },
             new Language() {
-                Lang = "Turkish"
+                Lang = "Turkish",
+                Lang3Code = "tur"
             }
         };
 

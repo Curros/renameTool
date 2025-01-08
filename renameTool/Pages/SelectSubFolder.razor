@@ -184,6 +184,9 @@
         return files;
     }
 
+    /// <summary>
+    /// Runs all the process.
+    /// </summary>
     private void ProcessFolder()
     {
         if (_currentFolder == null)
@@ -209,16 +212,22 @@
         foreach(var file in files)
         {
             var tmpIdx = file.Name.IndexOf("_");
-            var tmpId = 1; //Default in case some subtitles dosent have IDs.
+            var tmpId = 1; //Default in case some subtitles doesn't have IDs.
             var tmpLang = _lang.Where(l => l.Lang2Code == "en").First(); //Default in case some subtitles doesn't have "language", some subs come like this.
 
             if(tmpIdx > 0)
             {
                 var tmpLng = file.Name.Substring(tmpIdx + 1, file.Name.Length - (3 + 1 + tmpIdx + 1));
                 tmpId = Convert.ToInt32(file.Name.Substring(0, tmpIdx));
-                
+
                 //We check if the file, has the language extension.
-                tmpLang = GetLanguageFromName(tmpLng);
+                tmpLang = GetLanguageFromStandartName(tmpLng);
+            }
+
+            //We are facing the new Kontrast file format
+            if(file.Name.Contains(file.Directory.Name))
+            {
+                tmpLang = GetLanguageFromKontrastName(file);
             }
 
             //_dialogService.DisplayAlert("Alert", $"Can't find language '{tmpLng}', if you need it double check the files manually.", "OK");
@@ -234,7 +243,7 @@
             if (!file.Extension.EndsWith("idx")
                 && !file.Extension.EndsWith("sub"))
             {
-                // Preferimos subtitulos con mas peso.
+                // Preferimos subtítulos con mas peso.
                 if (_listSubs.Any(s => s.Lang == tmpLang.Lang
                     && s.Size > file.Length
                     && s.ParentFolder == file.Directory.Name
@@ -294,7 +303,7 @@
 
         foreach(var sub in selSubs) {
 
-            var fname = string.Format("{0}\\{1}.{2}{3}",
+            var fName = string.Format("{0}\\{1}.{2}{3}",
                 _currentFolder.Parent.FullName,
                 sub.ParentFolder,
                 sub.Lang2Code,
@@ -304,14 +313,14 @@
             if (sub.Extension.EndsWith("idx")
                 || sub.Extension.EndsWith("sub"))
             {
-                fname = string.Format("{0}\\{1}.{2}{3}",
+                fName = string.Format("{0}\\{1}.{2}{3}",
                 _currentFolder.Parent.FullName,
                 sub.FileName.Substring(0, sub.FileName.Length - 4),
                 sub.Lang2Code,
                 sub.Extension);
             }
 
-            File.Copy(sub.FullFileName, fname);
+            File.Copy(sub.FullFileName, fName);
         }
 
         ClearProcess();
@@ -328,26 +337,69 @@
     ///  Get the language from the filename.
     /// </summary>
     /// <returns></returns>
-    private Language GetLanguageFromName(string lang)
+    private Language GetLanguageFromStandartName(string lang)
     {
-        var rslt = _lang.Where(l => l.Lang2Code.ToLower() == "en").First();
+        Language rslt = null;
 
-        //We check if the file, has the language extension.
-        var tmp = _lang.FirstOrDefault(l => l.Lang.ToLower() == lang.ToLower());
-        if (tmp == null)
-            tmp = _lang.FirstOrDefault(l => l.Lang2Code.ToLower() == lang.ToLower());
-
-        if (tmp == null)
-            tmp = _lang.FirstOrDefault(l => l.Lang3Code.ToLower() == lang.ToLower());
-
-        if (tmp == null)
+        var splitLang = lang.Split(',');
+        if (splitLang.Count() > 1)
         {
-            tmp = _lang.FirstOrDefault(l => lang.Split(',').Any(ls => ls.ToLower() == l.Lang3Code.ToLower()));
+            foreach (var lng in splitLang)
+            {
+                if (rslt != null)
+                    break;  //Stop search if found
+
+                rslt = GetLanguageFromStandartName(lng);
+
+                if (rslt != null)
+                    return rslt;    //Si ya lo conseguimos evitamos el resto.
+            }
         }
 
-        // We return the "prefix" if nothing else is found.
-        if (tmp != null)
-            rslt = tmp;
+        //We check if the file name, has the language extension directly.
+        if (rslt == null)
+        {
+            // Clean the lang string
+            if (lang.EndsWith(".") || lang.StartsWith("."))
+            {
+                lang = lang.Trim('.');
+            }
+
+            rslt = _lang.FirstOrDefault(l => l.Lang.ToLower() == lang.ToLower() 
+                || l.Lang2Code.ToLower() == lang.ToLower()
+                || l.Lang3Code.ToLower() == lang.ToLower()
+            );
+        }
+
+        return rslt;
+    }
+
+    /// <summary>
+    /// Get the language from the filename ripped by Kontrast
+    /// </summary>
+    /// <param name="fileName"></param>
+    /// <returns></returns>
+    private Language GetLanguageFromKontrastName(FileInfo file)
+    {
+        Language rslt = null;
+
+        var tmpStr = file.Name.Replace(file.Directory.Name, "");
+        tmpStr = tmpStr.Substring(0, tmpStr.Count() - 3).TrimStart('.').TrimEnd('.');
+        var splitLang = tmpStr.Split('.');
+
+        if (splitLang.Count() < 1)
+            throw new ArgumentNullException();
+
+        foreach (var lng in splitLang)
+        {
+            if (rslt != null)
+                break;  //Stop search if found
+
+            rslt = GetLanguageFromStandartName(lng);
+
+            if (rslt != null)
+                return rslt;    //Si ya lo conseguimos evitamos el resto.
+        }
 
         return rslt;
     }
